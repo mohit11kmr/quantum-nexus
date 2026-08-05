@@ -28,7 +28,6 @@ from services.market_verifier import market_verifier
 app = FastAPI(title="QUANTUM NEXUS API", version="1.0.0")
 
 paper_sim = PaperTradingSimulator()
-brain = LearningBrain()
 
 class BuyRequest(BaseModel):
     symbol: str
