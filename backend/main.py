@@ -13,7 +13,7 @@ from services.options_strategy import OptionsBuyingStrategy
 from services.strike_selector import StrikeSelector
 from services.risk_engine import RiskEngine, PaperTradingSimulator
 from services.backtester import Backtester
-from services.learning_brain import LearningBrain
+from services.learning_brain import learning_brain
 from services.scenario_generator import ScenarioGenerator
 from services.signal_generator import SignalGenerator
 from services.signal_verifier import SignalVerifier
@@ -97,7 +97,7 @@ def paper_reset():
 
 @app.get("/api/brain/status")
 def get_brain_status():
-    return {"is_trained": brain.is_trained}
+    return learning_brain.get_brain_status()
 
 @app.get("/api/brain/scenarios")
 def get_brain_scenarios():
@@ -106,8 +106,11 @@ def get_brain_scenarios():
 
 @app.post("/api/brain/optimize")
 def optimize_brain():
-    df = fetch_stock_data("RELIANCE.NS", period="3mo")
-    return brain.train_brain_model(df)
+    return learning_brain.train_online_memory([])
+
+@app.post("/api/brain/predict")
+def predict_brain(features: Dict[str, Any] = {}):
+    return learning_brain.predict_win_probability(features)
 
 @app.get("/api/screener")
 def get_screener():
