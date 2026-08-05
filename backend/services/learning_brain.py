@@ -34,6 +34,7 @@ class AdvancedLearningBrain:
         self.feature_names = [
             "volume_surge_ratio", "cmf_20", "obv_slope", "rsi_14", "vwap_distance_pct",
             "atr_volatility_ratio", "adx_14", "supertrend_signal", "option_delta",
+            "implied_volatility_iv", "iv_rank_pct", "iv_skew", "option_vega",
             "put_call_ratio", "hour_of_day", "market_regime_score"
         ]
         self.feature_weights = {feat: round(1.0 / len(self.feature_names), 4) for feat in self.feature_names}
@@ -88,6 +89,10 @@ class AdvancedLearningBrain:
                 float(d.get("adx_14", 25.0)),
                 float(d.get("supertrend_signal", 1.0)), # 1.0 for Bullish, -1.0 for Bearish
                 float(d.get("option_delta", 0.5)),
+                float(d.get("implied_volatility_iv", 16.5)), # IV %
+                float(d.get("iv_rank_pct", 45.0)),          # IV Rank % (0-100)
+                float(d.get("iv_skew", 1.8)),               # Put IV vs Call IV Skew
+                float(d.get("option_vega", 12.5)),          # Option Vega sensitivity
                 float(d.get("put_call_ratio", 1.1)),
                 float(d.get("hour_of_day", datetime.now().hour)),
                 float(d.get("market_regime_score", 75.0))
@@ -96,8 +101,6 @@ class AdvancedLearningBrain:
         else:
             # Assume pandas DataFrame
             df = df_or_dict
-            req_cols = ["Vol_Surge_Ratio", "CMF", "RSI", "VWAP", "Close", "ATR", "ADX"]
-            # Fill missing columns gracefully
             vol_surge = df["Vol_Surge_Ratio"].values if "Vol_Surge_Ratio" in df else np.ones(len(df)) * 1.5
             cmf = df["CMF"].values if "CMF" in df else np.zeros(len(df))
             rsi = df["RSI"].values if "RSI" in df else np.ones(len(df)) * 50.0
@@ -110,7 +113,7 @@ class AdvancedLearningBrain:
                 row_feat = [
                     float(vol_surge[i]), float(cmf[i]), 0.5, float(rsi[i]),
                     float(vwap_dist[i]), float(atr[i] / 10.0), float(adx[i]),
-                    1.0, 0.50, 1.0, 14.0, 70.0
+                    1.0, 0.50, 16.5, 45.0, 1.8, 12.5, 1.0, 14.0, 70.0
                 ]
                 X.append(row_feat)
             return np.array(X)
