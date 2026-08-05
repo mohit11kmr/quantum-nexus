@@ -1,0 +1,10 @@
+{
+  "name": "quantum-nexus",
+  "version": "1.0.0",
+  "description": "Quantum Nexus - Unified AI Trading & Research Super-Platform",
+  "private": true,
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "dev": "cd frontend && npm run dev"
+  }
+}
