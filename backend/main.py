@@ -22,6 +22,8 @@ from services.stress_tester import StressTester
 from services.pattern_recognizer import PatternRecognizer
 from services.sentiment_analyzer import SentimentAnalyzer
 from services.notifications import send_alert
+from services.broker_adapter import broker_adapter
+from services.market_verifier import market_verifier
 
 app = FastAPI(title="QUANTUM NEXUS API", version="1.0.0")
 
@@ -152,6 +154,25 @@ def get_patterns(symbol: str):
         raise HTTPException(status_code=404, detail="Data not found")
     pr = PatternRecognizer()
     return {"patterns": pr.detect_patterns(df)}
+
+@app.get("/api/broker/status")
+def get_broker_status():
+    return broker_adapter.get_broker_status()
+
+@app.post("/api/broker/connect")
+def connect_broker(payload: Dict[str, Any] = {}):
+    client_code = payload.get("client_code")
+    password = payload.get("password")
+    totp = payload.get("totp")
+    return broker_adapter.connect_session(client_code, password, totp)
+
+@app.get("/api/broker/options-chain/{symbol}")
+def get_broker_options_chain(symbol: str):
+    return {"symbol": symbol, "chain": broker_adapter.get_live_option_chain_ltp(symbol)}
+
+@app.get("/api/signals/verify-live")
+def get_live_verification_stats():
+    return market_verifier.get_live_verification_stats()
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
