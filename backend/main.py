@@ -9,13 +9,13 @@ from services.volume_analytics import generate_ai_analysis_report
 from services.indicators import weighted_signal_strength
 from services.regime_classifier import MarketRegimeClassifier
 from services.options_engine import BlackScholesEngine
-from services.options_strategy import OptionsBuyingStrategy
+from services.options_strategy import options_buying_strategy
 from services.strike_selector import StrikeSelector
 from services.risk_engine import RiskEngine, PaperTradingSimulator
 from services.backtester import Backtester
 from services.learning_brain import learning_brain
 from services.scenario_generator import ScenarioGenerator
-from services.signal_generator import SignalGenerator
+from services.signal_generator import signal_generator
 from services.signal_verifier import SignalVerifier
 from services.monte_carlo import MonteCarloSimulator
 from services.stress_tester import StressTester
@@ -138,9 +138,11 @@ def verify_signal():
     return verifier.verify_signal({"rsi": 65}, {"delta": 0.5}, {"trend_up": True})
 
 @app.get("/api/signals/generate")
-def generate_signal():
-    gen = SignalGenerator()
-    return gen.generate_signal(80, 60, 90)
+def generate_signal(symbol: str = "RELIANCE.NS"):
+    df = fetch_stock_data(symbol, period="1mo")
+    if df.empty:
+        raise HTTPException(status_code=404, detail="Data not found for symbol")
+    return signal_generator.generate_signal(df, ai_confidence=78.5)
 
 @app.get("/api/indicators/{symbol}")
 def get_indicators(symbol: str):
