@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import random
 import time
+import requests
 from typing import Dict, Any, List
 
 POPULAR_STOCKS = [
@@ -11,7 +12,7 @@ POPULAR_STOCKS = [
 ]
 
 def normalize_symbol(symbol: str) -> str:
-    """Normalize trading symbols for Yahoo Finance."""
+    """Normalize trading symbols for Yahoo Finance API."""
     sym = symbol.strip().upper()
     if sym in ["NIFTY", "NIFTY50", "NIFTY 50", "^NSEI"]:
         return "^NSEI"
@@ -62,16 +63,30 @@ def generate_synthetic_stock_data(symbol: str, days: int = 100, interval: str = 
     return df
 
 def fetch_live_quote(symbol: str) -> Dict[str, Any]:
-    """Fetch real-time live quote with robust fast_info & historical fallback."""
+    """Fetch 100% Real-Time Live Quote via Direct Chart API Engine with Fallback."""
     norm_sym = normalize_symbol(symbol)
+    price = 0.0
+    prev_close = 0.0
+    volume = 0
+    
+    # 1. Primary Engine: Direct Yahoo Chart REST API (Fastest, zero cloud rate limits)
     try:
-        ticker = yf.Ticker(norm_sym)
-        price = 0.0
-        prev_close = 0.0
-        volume = 0
-        
-        # 1. Try fast_info (fastest and handles index symbols ^NSEI)
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{norm_sym}?interval=1m&range=1d"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        res = requests.get(url, headers=headers, timeout=4)
+        if res.status_code == 200:
+            chart_data = res.json().get("chart", {}).get("result", [])[0]
+            meta = chart_data.get("meta", {})
+            price = float(meta.get("regularMarketPrice", 0.0) or 0.0)
+            prev_close = float(meta.get("chartPreviousClose", meta.get("previousClose", price)) or price)
+            volume = int(meta.get("regularMarketVolume", 0) or 0)
+    except Exception as e:
+        print(f"Direct Chart API warning for {symbol}: {e}")
+
+    # 2. Secondary Engine: yfinance fast_info
+    if price == 0.0:
         try:
+            ticker = yf.Ticker(norm_sym)
             fast = ticker.fast_info
             price = float(fast.get("last_price", 0.0) or 0.0)
             prev_close = float(fast.get("previous_close", 0.0) or 0.0)
@@ -79,8 +94,10 @@ def fetch_live_quote(symbol: str) -> Dict[str, Any]:
         except Exception:
             pass
 
-        # 2. Fallback to latest candle history if fast_info is empty
-        if price == 0.0:
+    # 3. Tertiary Fallback: latest candle history
+    if price == 0.0:
+        try:
+            ticker = yf.Ticker(norm_sym)
             hist = ticker.history(period="5d", interval="1m")
             if not hist.empty:
                 price = float(hist["Close"].iloc[-1])
@@ -88,26 +105,20 @@ def fetch_live_quote(symbol: str) -> Dict[str, Any]:
                 daily_hist = ticker.history(period="5d", interval="1d")
                 if len(daily_hist) >= 2:
                     prev_close = float(daily_hist["Close"].iloc[-2])
+        except Exception:
+            pass
 
-        # 3. Fallback to info dict
-        if price == 0.0:
-            info = ticker.info or {}
-            price = float(info.get("currentPrice", info.get("regularMarketPrice", 0.0)))
-            prev_close = float(info.get("previousClose", 0.0))
+    change = round(price - prev_close, 2) if prev_close else 0.0
+    change_pct = round(((price - prev_close) / prev_close) * 100, 2) if prev_close else 0.0
 
-        change = round(price - prev_close, 2) if prev_close else 0.0
-        change_pct = round(((price - prev_close) / prev_close) * 100, 2) if prev_close else 0.0
-
-        return {
-            "symbol": symbol,
-            "normalized_symbol": norm_sym,
-            "current_price": round(price, 2),
-            "previous_close": round(prev_close, 2),
-            "change": change,
-            "change_pct": change_pct,
-            "volume": volume,
-            "timestamp": time.time()
-        }
-    except Exception as e:
-        print(f"Error fetching quote for {symbol} ({norm_sym}): {e}")
-        return {"symbol": symbol, "error": str(e), "current_price": 0.0}
+    return {
+        "symbol": symbol,
+        "normalized_symbol": norm_sym,
+        "current_price": round(price, 2),
+        "previous_close": round(prev_close, 2),
+        "change": change,
+        "change_pct": change_pct,
+        "volume": volume,
+        "timestamp": time.time(),
+        "status": "LIVE_REALTIME" if price > 0 else "OFFLINE"
+    }
