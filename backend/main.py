@@ -394,6 +394,7 @@ class BacktestRequest(BaseModel):
     stopLossPct: float = 2.0
     takeProfitPct: float = 6.0
     initialCapital: float = 100000.0
+    costPerTradePct: float = 0.15
 
 @app.post("/api/backtest")
 def run_backtest_post(req: BacktestRequest):
@@ -406,7 +407,8 @@ def run_backtest_post(req: BacktestRequest):
         holding_days=req.holdingDays,
         stop_loss_pct=req.stopLossPct,
         take_profit_pct=req.takeProfitPct,
-        initial_capital=req.initialCapital
+        initial_capital=req.initialCapital,
+        cost_per_trade_pct=req.costPerTradePct
     )
     res["dataSource"] = df.attrs.get("dataSource", "unknown")
     return res
@@ -614,8 +616,20 @@ def run_workflow(payload: Dict[str, Any] = {}):
     return out
 
 @app.websocket("/ws/market")
-async def ws_market_feed(websocket: WebSocket, symbol: str = "NIFTY"):
-    """Stream realtime market ticks (real data via fetch_live_quote)."""
+async def ws_market_feed(websocket: WebSocket, symbol: str = "NIFTY", token: Optional[str] = None):
+    """Stream realtime market ticks (real data via fetch_live_quote).
+
+    Optional JWT auth: pass ?token=<access_token> to attach the authenticated
+    user. Invalid tokens are rejected with close code 1008; anonymous clients
+    still receive the public feed (backward compatible).
+    """
+    if token:
+        try:
+            payload = auth_manager.decode_token(token, expected_type="access")
+            get_user_by_username(str(payload.get("sub", "")))
+        except Exception:
+            await websocket.close(code=1008)
+            return
     await websocket.accept()
     queue = market_stream.subscribe(symbol)
     try:

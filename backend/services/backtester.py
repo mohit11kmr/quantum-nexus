@@ -9,12 +9,19 @@ def run_volume_backtest(
     holding_days: int = 5,
     stop_loss_pct: float = 2.0,
     take_profit_pct: float = 6.0,
-    initial_capital: float = 100000.0
+    initial_capital: float = 100000.0,
+    cost_per_trade_pct: float = 0.15,
+    risk_free_rate: float = 0.06
 ) -> Dict[str, Any]:
     """Execute historical strategy backtest based on volume surge breakouts.
 
     Realistic execution: entries are filled at the NEXT bar's open (signal on
     prior close), with gap-aware stop-loss / take-profit and a time exit.
+
+    Transaction costs (brokerage + STT + slippage) are charged on BOTH sides
+    (entry and exit) so backtests stay honest — per the Indian-market guidance
+    of ~0.1-0.3% per side. Risk-adjusted metrics (Sharpe, Calmar, CAGR) are
+    computed from the equity curve, annualised over 252 trading days.
     """
     if df is None or df.empty or len(df) < 25:
         return {"error": "Not enough historical data for backtesting."}
@@ -23,6 +30,7 @@ def run_volume_backtest(
     df["SMA20_Close"] = df["Close"].rolling(20).mean()
     df["Vol_SMA20"] = df["Volume"].rolling(20).mean()
 
+    cost = cost_per_trade_pct / 100.0
     capital = initial_capital
     equity_curve = []
     trades = []
@@ -71,9 +79,12 @@ def run_volume_backtest(
                 exit_reason = "Time Exit"
 
             if exit_trade:
-                pnl = float((exit_price - entry_price) * shares)
+                # Net of transaction cost on both sides
+                exit_proceeds = exit_price * shares * (1 - cost)
+                cost_basis = entry_price * shares * (1 + cost)
+                pnl = float(exit_proceeds - cost_basis)
                 capital += pnl
-                pnl_pct = round(((exit_price - entry_price) / entry_price) * 100, 2) if entry_price else 0.0
+                pnl_pct = round(((exit_proceeds - cost_basis) / cost_basis) * 100, 2) if cost_basis else 0.0
                 trades.append({
                     "entryDate": entry_date,
                     "exitDate": curr_date,
@@ -99,7 +110,7 @@ def run_volume_backtest(
                     target_price = entry_price * (1 + take_profit_pct / 100)
                     stop_price = entry_price * (1 - stop_loss_pct / 100)
                     hold_count = 0
-                    shares = int(capital / entry_price) if entry_price > 0 else 0
+                    shares = int(capital / (entry_price * (1 + cost))) if entry_price > 0 else 0
 
         # Record equity
         current_portfolio_value = capital
@@ -130,15 +141,36 @@ def run_volume_backtest(
                 max_dd = dd
         max_drawdown_pct = round(max_dd, 2)
 
+    # Risk-adjusted metrics from the equity curve (annualised over 252 days)
+    sharpe_ratio = 0.0
+    cagr_pct = 0.0
+    calmar_ratio = 0.0
+    if len(equity_vals) > 2 and initial_capital > 0:
+        rets = np.diff(equity_vals) / np.maximum(equity_vals[:-1], 1e-9)
+        rets = rets[rets != 0] if len(rets) > 0 else rets
+        if len(rets) > 1:
+            std = float(np.std(rets, ddof=1))
+            mean_daily = float(np.mean(rets))
+            sharpe_ratio = round((mean_daily - risk_free_rate / 252.0) / std * np.sqrt(252.0), 2) if std > 0 else 0.0
+        bars = len(equity_vals)
+        years = max(bars / 252.0, 1e-9)
+        cagr_pct = round(((capital / initial_capital) ** (1.0 / years) - 1.0) * 100.0, 2)
+        if max_drawdown_pct > 0:
+            calmar_ratio = round(cagr_pct / max_drawdown_pct, 2)
+
     return {
         "initialCapital": initial_capital,
         "finalCapital": round(capital, 2),
         "totalReturnPct": total_return_pct,
+        "cagrPct": cagr_pct,
+        "sharpeRatio": sharpe_ratio,
+        "calmarRatio": calmar_ratio,
+        "maxDrawdownPct": max_drawdown_pct,
+        "costPerTradePct": cost_per_trade_pct,
         "totalTrades": total_trades,
         "winningTrades": winning_trades,
         "losingTrades": losing_trades,
         "winRatePct": win_rate,
-        "maxDrawdownPct": max_drawdown_pct,
         "equityCurve": equity_curve,
         "tradeLog": trades[-10:]
     }
