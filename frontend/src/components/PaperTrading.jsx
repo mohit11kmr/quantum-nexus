@@ -45,13 +45,31 @@ export default function PaperTrading() {
         const tick = (Math.random() * 2 - 0.95);
         const ltp = Math.max(1, Number((pos.current_price + tick).toFixed(2)));
         const pnl = Number(((ltp - pos.entry_price) * pos.quantity).toFixed(2));
+        
+        // Trailing Stop Loss Logic
+        const pnlPercent = (ltp - pos.entry_price) / pos.entry_price * 100;
+        const maxPnlPercent = Math.max(pos.max_pnl_percent || 0, pnlPercent);
+        
+        let tslTriggered = false;
+        // If profit hit 15% or more, lock the stop loss at entry (0% profit)
+        if (maxPnlPercent >= 15 && pnlPercent <= 0) {
+           tslTriggered = true;
+        }
+
         totalOpenPnL += pnl;
-        return { ...pos, current_price: ltp, pnl: pnl };
+        return { ...pos, current_price: ltp, pnl: pnl, max_pnl_percent: maxPnlPercent, tsl_triggered: tslTriggered };
+      });
+
+      // Auto-close TSL triggered positions
+      const triggeredPositions = updatedPos.filter(p => p.tsl_triggered);
+      triggeredPositions.forEach(p => {
+         // In a real app, this would call the API. For UI demo, we'll handle it below.
+         handleClosePosition({...p, notes: 'TSL Hit - Protected Capital'});
       });
 
       return {
         ...prev,
-        positions: updatedPos,
+        positions: updatedPos.filter(p => !p.tsl_triggered), // Remove auto-closed
         equity: Number((prev.balance + totalOpenPnL).toFixed(2))
       };
     });
@@ -78,6 +96,8 @@ export default function PaperTrading() {
         lots: lots,
         investment: totalInvestment,
         pnl: 0,
+        max_pnl_percent: 0,
+        tsl_triggered: false,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
 
@@ -107,7 +127,7 @@ export default function PaperTrading() {
         exit: pos.current_price,
         qty: pos.quantity,
         pnl: pos.pnl,
-        notes: 'Target Met / Closed via Terminal'
+        notes: pos.notes || 'Target Met / Closed via Terminal'
       };
 
       setClosedTrades(prev => [closedRecord, ...prev]);

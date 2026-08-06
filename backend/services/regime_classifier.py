@@ -54,10 +54,10 @@ class MarketRegimeClassifier:
             
         return {
             "regime": regime,
-            "confidence": conf,
-            "sma20": sma20,
-            "sma50": sma50,
-            "rsi": rsi,
-            "atr": atr,
-            "vol_surge": vol_surge
+            "confidence": float(conf),
+            "sma20": float(sma20),
+            "sma50": float(sma50),
+            "rsi": float(rsi),
+            "atr": float(atr),
+            "vol_surge": bool(vol_surge)
         }

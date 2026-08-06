@@ -6,3 +6,14 @@ numpy>=1.26.3
 scikit-learn>=1.4.0
 python-multipart>=0.0.6
 requests>=2.31.0
+
+# Auth (multi-user SaaS)
+PyJWT>=2.8.0
+bcrypt>=4.0.1
+
+# Multi-agent workflow orchestration
+langgraph>=1.0.0
+
+# Optional: live AngelOne broker mode (paper trading works without these)
+smartapi-python>=1.4.1
+pyotp>=2.9.0

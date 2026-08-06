@@ -3,6 +3,8 @@ import math
 from typing import Dict, Any, List
 from services.stock_data import fetch_live_quote, fetch_stock_data
 from services.options_engine import BlackScholesEngine
+from services.indicators import calculate_indicators, supertrend_bullish
+from services.learning_brain import ai_confidence_from_df
 
 class ProfitPlaybookEngine:
     """Institutional Grade Wealth Creation & Option Buying Engine."""
@@ -13,7 +15,7 @@ class ProfitPlaybookEngine:
     def evaluate_wealth_trade(self, symbol: str = "NIFTY", capital: float = 100000.0) -> Dict[str, Any]:
         """Evaluate a high-probability money-making opportunity for symbol."""
         quote = fetch_live_quote(symbol)
-        spot_price = quote.get("current_price", 24649.00)
+        spot_price = quote.get("current_price") or 24649.00
         
         # Rule 1: Money & Strike Selection (ATM / Slight ITM)
         strike = round(spot_price / 50.0) * 50 if "NIFTY" in symbol.upper() else round(spot_price)
@@ -25,15 +27,28 @@ class ProfitPlaybookEngine:
         iv_safe = iv_rank_pct < 50.0
         
         # Rule 3: Triple Confirmation (VWAP + SuperTrend + RSI + ADX)
-        vwap_support = round(spot_price * 0.998, 2)
+        # Real indicators computed from 1-month candles
+        df = fetch_stock_data(symbol, period="3mo")
+        vwap_support = round(spot_price, 2)
+        supertrend_bullish_flag = True
+        rsi_val = 50.0
+        adx_val = 20.0
+        if not df.empty:
+            df = calculate_indicators(df)
+            latest = df.iloc[-1]
+            vwap_support = round(float(latest.get("VWAP", spot_price)), 2)
+            rsi_val = round(float(latest.get("RSI", 50.0)), 2)
+            adx_val = round(float(latest.get("ADX", 20.0)), 2)
+            supertrend_bullish_flag = supertrend_bullish(df)
+            ai_win_prob = ai_confidence_from_df(df)
+        else:
+            ai_win_prob = 75.0
+
         price_above_vwap = spot_price > vwap_support
-        supertrend_bullish = True
-        rsi_val = 58.4
         rsi_safe = rsi_val > 52.0
-        adx_val = 24.2
         adx_safe = adx_val > 20.0
-        
-        triple_confirmed = price_above_vwap and supertrend_bullish and rsi_safe and adx_safe
+
+        triple_confirmed = price_above_vwap and supertrend_bullish_flag and rsi_safe and adx_safe
         
         # Rule 4: Risk-Reward 1:2.5 & Position Sizing
         risk_per_trade = capital * 0.02  # 2% max risk per trade (e.g. ₹2,000 for ₹1,00,000 capital)
@@ -58,8 +73,8 @@ class ProfitPlaybookEngine:
         time_decimal = current_hour + current_min / 60.0
         time_window_safe = (9.5 <= time_decimal <= 11.5) or (13.5 <= time_decimal <= 15.0) or True
         
-        # Overall Win Probability & Recommendation
-        win_probability = 84.5 if (triple_confirmed and iv_safe) else 65.0
+        # Overall Win Probability & Recommendation (data-driven, not hardcoded)
+        win_probability = ai_win_prob if (triple_confirmed and iv_safe) else min(ai_win_prob, 65.0)
         trade_status = "ACTIVE_STRONG_BUY" if win_probability >= 80.0 else "WAIT_FOR_SETUP"
         
         return {
@@ -92,7 +107,7 @@ class ProfitPlaybookEngine:
                 {
                     "rule": "3. Triple Confirmation (VWAP + SuperTrend + RSI)",
                     "status": "PASSED" if triple_confirmed else "WAIT",
-                    "detail": f"Price > VWAP ({vwap_support}), RSI={rsi_val}, ADX={adx_val}"
+                    "detail": f"Price>VWAP({price_above_vwap}), SuperTrend({supertrend_bullish_flag}), RSI={rsi_val}, ADX={adx_val}"
                 },
                 {
                     "rule": "4. Strict 1:2.5 Risk-Reward Ratio",
