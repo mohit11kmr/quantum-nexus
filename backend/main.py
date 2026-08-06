@@ -26,8 +26,10 @@ from services.notifications import send_alert
 from services.broker_adapter import broker_adapter
 from services.market_verifier import market_verifier
 from services.profit_playbook import profit_playbook
+from services.telegram_alerts import telegram_alerts
 
 app = FastAPI(title="QUANTUM NEXUS API", version="1.0.0")
+
 
 # Enable CORS for live Vercel & local connections
 app.add_middleware(
@@ -230,7 +232,16 @@ def get_live_verification_stats():
 
 @app.get("/api/profit-playbook")
 def get_profit_playbook(symbol: str = "NIFTY", capital: float = 100000.0):
-    return profit_playbook.evaluate_wealth_trade(symbol, capital)
+    res = profit_playbook.evaluate_wealth_trade(symbol, capital)
+    # Auto-dispatch Telegram alert if signal is active
+    telegram_alerts.send_trade_signal_alert(res)
+    return res
+
+@app.post("/api/telegram/dispatch")
+def dispatch_telegram_alert(payload: Dict[str, Any] = {}):
+    sent = telegram_alerts.send_trade_signal_alert(payload)
+    return {"status": "dispatched" if sent else "failed", "channel": telegram_alerts.chat_id}
 
 if __name__ == "__main__":
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
