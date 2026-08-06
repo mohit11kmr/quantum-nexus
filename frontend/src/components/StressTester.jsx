@@ -5,8 +5,13 @@ export default function StressTester({ symbol }) {
   const [data, setData] = React.useState([]);
 
   React.useEffect(() => {
-    fetchStressTest(symbol).then(setData);
+    fetchStressTest(symbol).then(res => {
+      const list = Array.isArray(res) ? res : (res?.results || []);
+      setData(list);
+    });
   }, [symbol]);
+
+  const list = Array.isArray(data) ? data : [];
 
   return (
     <div className="card">
@@ -25,7 +30,7 @@ export default function StressTester({ symbol }) {
             </tr>
           </thead>
           <tbody>
-            {data.map((row, i) => (
+            {list.map((row, i) => (
               <tr key={i}>
                 <td style={{ fontWeight: 'bold' }}>{row.scenario}</td>
                 <td className="text-red">{row.maxLoss}%</td>

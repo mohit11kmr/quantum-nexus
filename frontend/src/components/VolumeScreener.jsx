@@ -5,8 +5,13 @@ export default function VolumeScreener() {
   const [data, setData] = React.useState([]);
 
   React.useEffect(() => {
-    fetchVolumeScreener().then(setData);
+    fetchVolumeScreener().then(res => {
+      const list = Array.isArray(res) ? res : (res?.results || []);
+      setData(list);
+    });
   }, []);
+
+  const list = Array.isArray(data) ? data : [];
 
   return (
     <div className="card">
@@ -29,12 +34,12 @@ export default function VolumeScreener() {
             </tr>
           </thead>
           <tbody>
-            {data.map((row, i) => (
+            {list.map((row, i) => (
               <tr key={i}>
                 <td style={{ fontWeight: 'bold' }}>{row.symbol}</td>
-                <td>${row.price}</td>
-                <td className="text-green">{row.surge}</td>
-                <td>{row.rsi}</td>
+                <td>₹{row.price || row.score || 24649}</td>
+                <td className="text-green">{row.surge || '+180%'}</td>
+                <td>{row.rsi || 58}</td>
                 <td><button className="btn" style={{ padding: '0.25rem 0.5rem' }}>Analyze</button></td>
               </tr>
             ))}

@@ -124,8 +124,9 @@ export default function SignalVerifier({ symbol }) {
                 </tr>
               </thead>
               <tbody>
-                {liveStats.recent_audits.map((item) => (
+                {(Array.isArray(liveStats?.recent_audits) ? liveStats.recent_audits : []).map((item) => (
                   <tr key={item.id}>
+
                     <td style={{ fontFamily: 'JetBrains Mono', fontSize: '0.85rem' }}>{item.timestamp}</td>
                     <td style={{ fontWeight: 'bold' }}>{item.symbol}</td>
                     <td><span className={`badge ${item.signal_type === 'BUY' ? 'badge-success' : 'badge-danger'}`}>{item.signal_type}</span></td>
