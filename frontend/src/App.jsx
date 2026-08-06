@@ -17,17 +17,15 @@ import TradeJournal from './components/TradeJournal';
 import ProfitPlaybook from './components/ProfitPlaybook';
 
 const TABS = [
-  { id: 'playbook', label: '💰 Wealth Creation Playbook' },
-  { id: 'volume', label: '📊 Volume Analytics' },
-  { id: 'screener', label: '🔍 Volume Surge Screener' },
-  { id: 'options', label: '🏷️ Options Valuation' },
-  { id: 'strategy', label: '🎯 Options Strategy Engine' },
-  { id: 'ai', label: '🧠 AI Brain & Zero-Loss' },
-  { id: 'paper', label: '📝 Paper Trading' },
-  { id: 'backtest', label: '▶️ Strategy Backtester' },
-  { id: 'montecarlo', label: '🎲 Monte Carlo VaR' },
-  { id: 'stress', label: '⚡ Stress Tester' },
-  { id: 'signal', label: '✅ Signal Verifier' }
+  { id: 'playbook', label: '🎯 आज का ट्रेड (Trade Signal & Profit)' },
+  { id: 'volume', label: '📊 लाइव चार्ट (Live Chart & Volume)' },
+  { id: 'screener', label: '🔍 स्टॉक्स खोजें (Stock Screener)' },
+  { id: 'options', label: '🏷️ कॉल/पुट रेट (Options Chain)' },
+  { id: 'strategy', label: '🎯 AI रणनीति (Options Strategy)' },
+  { id: 'ai', label: '🧠 AI ब्रेन (Self Learning Engine)' },
+  { id: 'paper', label: '📝 प्रैक्टिस ट्रेडिंग (Paper Trading)' },
+  { id: 'backtest', label: '▶️ पुराना टेस्ट (Backtest History)' },
+  { id: 'signal', label: '✅ सिग्नल जाँच (Signal Verifier)' }
 ];
 
 function App() {
@@ -75,8 +73,6 @@ function App() {
             </div>
           )}
           {activeTab === 'backtest' && <Backtesting symbol={symbol} />}
-          {activeTab === 'montecarlo' && <MonteCarloPanel symbol={symbol} />}
-          {activeTab === 'stress' && <StressTester symbol={symbol} />}
           {activeTab === 'signal' && <SignalVerifier symbol={symbol} />}
         </div>
       </main>
