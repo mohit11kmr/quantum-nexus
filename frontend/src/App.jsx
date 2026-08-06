@@ -14,8 +14,10 @@ import MonteCarloPanel from './components/MonteCarloPanel';
 import StressTester from './components/StressTester';
 import SignalVerifier from './components/SignalVerifier';
 import TradeJournal from './components/TradeJournal';
+import ProfitPlaybook from './components/ProfitPlaybook';
 
 const TABS = [
+  { id: 'playbook', label: '💰 Wealth Creation Playbook' },
   { id: 'volume', label: '📊 Volume Analytics' },
   { id: 'screener', label: '🔍 Volume Surge Screener' },
   { id: 'options', label: '🏷️ Options Valuation' },
@@ -29,8 +31,8 @@ const TABS = [
 ];
 
 function App() {
-  const [activeTab, setActiveTab] = useState('volume');
-  const [symbol, setSymbol] = useState('AAPL');
+  const [activeTab, setActiveTab] = useState('playbook');
+  const [symbol, setSymbol] = useState('NIFTY');
 
   return (
     <div className="app-container">
@@ -52,6 +54,7 @@ function App() {
         </div>
 
         <div className="tab-content">
+          {activeTab === 'playbook' && <ProfitPlaybook symbol={symbol} />}
           {activeTab === 'volume' && (
             <div className="grid-2col">
               <StockChart symbol={symbol} />

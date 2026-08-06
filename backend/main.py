@@ -24,8 +24,10 @@ from services.sentiment_analyzer import SentimentAnalyzer
 from services.notifications import send_alert
 from services.broker_adapter import broker_adapter
 from services.market_verifier import market_verifier
+from services.profit_playbook import profit_playbook
 
 app = FastAPI(title="QUANTUM NEXUS API", version="1.0.0")
+
 
 paper_sim = PaperTradingSimulator()
 
@@ -178,5 +180,10 @@ def get_broker_options_chain(symbol: str):
 def get_live_verification_stats():
     return market_verifier.get_live_verification_stats()
 
+@app.get("/api/profit-playbook")
+def get_profit_playbook(symbol: str = "NIFTY", capital: float = 100000.0):
+    return profit_playbook.evaluate_wealth_trade(symbol, capital)
+
 if __name__ == "__main__":
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
