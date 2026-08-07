@@ -1,8 +1,14 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { HashRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import App from './App.jsx';
 import './App.css';
 import { LanguageProvider } from './i18n.jsx';
+
+function RedirectWithDefaultSymbol() {
+  const { tab } = useParams();
+  return <Navigate to={`/${tab || 'playbook'}/NIFTY`} replace />;
+}
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -35,7 +41,13 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
       <LanguageProvider>
-        <App />
+        <HashRouter>
+          <Routes>
+            <Route path="/" element={<Navigate to="/playbook/NIFTY" replace />} />
+            <Route path="/:tab" element={<RedirectWithDefaultSymbol />} />
+            <Route path="/:tab/:symbol" element={<App />} />
+          </Routes>
+        </HashRouter>
       </LanguageProvider>
     </ErrorBoundary>
   </React.StrictMode>,

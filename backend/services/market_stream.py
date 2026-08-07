@@ -8,11 +8,12 @@ data via stock_data.fetch_live_quote() instead of simulated GBM ticks.
 
 import asyncio
 import time
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from services.stock_data import fetch_live_quote
 
 DEFAULT_INTERVAL_SEC = 2.0
+HEARTBEAT_INTERVAL_SEC = 15.0
 
 
 class MarketStreamService:
@@ -23,6 +24,7 @@ class MarketStreamService:
         self._session: Dict[str, Dict[str, float]] = {}
         self._last_tick: Dict[str, Dict] = {}
         self._running = False
+        self._heartbeat_task: Optional[asyncio.Task] = None
 
     def subscribe(self, symbol: str) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue(maxsize=500)
@@ -73,6 +75,7 @@ class MarketStreamService:
         price = float(quote.get("current_price") or 0.0)
         sess["high"] = max(sess["high"], price)
         sess["low"] = min(sess["low"], price)
+        now = time.time()
         return {
             "symbol": symbol,
             "price": price,
@@ -82,9 +85,18 @@ class MarketStreamService:
             "volume": int(quote.get("volume") or 0),
             "session_high": round(sess["high"], 2),
             "session_low": round(sess["low"], 2),
-            "timestamp": time.time(),
+            "timestamp": now,
+            "age_sec": 0.0,
             "status": quote.get("status", "LIVE_REALTIME"),
+            "data_source": quote.get("data_source", "unknown"),
         }
+
+    def get_tick(self, symbol: str) -> Optional[Dict]:
+        """Freshest cached tick (served by the REST /api/market/ticks endpoint)."""
+        tick = self._last_tick.get(symbol)
+        if tick is not None:
+            tick["age_sec"] = round(time.time() - tick.get("timestamp", time.time()), 2)
+        return dict(tick) if tick else None
 
     async def _broadcast(self, symbol: str, tick: Dict) -> None:
         for q in list(self._subscribers.get(symbol, [])):
@@ -93,11 +105,33 @@ class MarketStreamService:
             except asyncio.QueueFull:
                 pass
 
+    async def _heartbeat_loop(self) -> None:
+        while self._running:
+            await asyncio.sleep(HEARTBEAT_INTERVAL_SEC)
+            if not self._subscribers:
+                continue
+            heartbeat = {
+                "type": "heartbeat",
+                "timestamp": time.time(),
+                "active_symbols": list(self._last_tick.keys()),
+            }
+            for q in list(self._subscribers.values()):
+                for sub_q in list(q):
+                    try:
+                        sub_q.put_nowait(heartbeat)
+                    except asyncio.QueueFull:
+                        pass
+
     async def start(self) -> None:
         self._running = True
+        if self._heartbeat_task is None or self._heartbeat_task.done():
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
     def stop(self) -> None:
         self._running = False
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            self._heartbeat_task = None
         for task in self._tasks.values():
             task.cancel()
         self._tasks.clear()
@@ -110,6 +144,7 @@ class MarketStreamService:
             "active_symbols": list(self._tasks.keys()),
             "subscribers": {s: len(qs) for s, qs in self._subscribers.items()},
             "last_prices": {s: t.get("price") for s, t in self._last_tick.items()},
+            "last_updated": {s: t.get("timestamp") for s, t in self._last_tick.items()},
         }
 
 

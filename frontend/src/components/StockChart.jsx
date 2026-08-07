@@ -1,63 +1,137 @@
-import React, { useState, useEffect } from 'react';
-import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { fetchLiveQuote } from '../services/api';
+import React, { useEffect, useRef, useState } from 'react';
+import { createChart } from 'lightweight-charts';
+import { fetchStockAnalysis } from '../services/api';
+import useLiveTicker from '../hooks/useLiveTicker';
+
+const UP = '#34d399';
+const DOWN = '#fb7185';
+
+function toUtcSec(value) {
+  const t = typeof value === 'string' ? value.replace(' ', 'T') : value;
+  const ms = new Date(t).getTime();
+  return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
+}
 
 export default function StockChart({ symbol = 'NIFTY' }) {
-  const [chartData, setChartData] = useState([]);
-  const [basePrice, setBasePrice] = useState(24649.0);
+  const containerRef = useRef(null);
+  const chartRef = useRef(null);
+  const candleSeriesRef = useRef(null);
+  const volSeriesRef = useRef(null);
+  const liveSeriesRef = useRef(null);
+  const [livePrice, setLivePrice] = useState(null);
+  const [lastCandleTime, setLastCandleTime] = useState(null);
+
+  const { tick, connected } = useLiveTicker(symbol);
 
   useEffect(() => {
-    let isMounted = true;
-    const updateChart = async () => {
-      try {
-        const quote = await fetchLiveQuote(symbol);
-        const livePrice = quote?.current_price || 24649.0;
-        if (!isMounted) return;
-        setBasePrice(livePrice);
+    const el = containerRef.current;
+    if (!el) return undefined;
 
-        const points = Array.from({ length: 30 }, (_, i) => {
-          const noise = (Math.sin(i / 3) * 15) + (Math.random() * 8 - 4);
-          const priceVal = Number((livePrice + noise - 10).toFixed(2));
-          return {
-            time: `10:${i < 10 ? '0' + i : i}`,
-            price: priceVal,
-            vwap: Number((livePrice - 5).toFixed(2)),
-            volume: Math.floor(Math.random() * 8000 + 2000)
-          };
-        });
-        setChartData(points);
-      } catch (e) {
-        console.error("Error building stock chart data", e);
+    const chart = createChart(el, {
+      autoSize: true,
+      layout: {
+        background: { type: 'solid', color: 'transparent' },
+        textColor: 'rgba(148,163,184,0.9)',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        fontSize: 11,
+      },
+      grid: {
+        vertLines: { color: 'rgba(255,255,255,0.04)' },
+        horzLines: { color: 'rgba(255,255,255,0.04)' },
+      },
+      rightPriceScale: { borderColor: 'rgba(255,255,255,0.08)' },
+      timeScale: {
+        borderColor: 'rgba(255,255,255,0.08)',
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      crosshair: {
+        vertLine: { color: 'rgba(148,163,184,0.4)', labelBackgroundColor: '#1e293b' },
+        horzLine: { color: 'rgba(148,163,184,0.4)', labelBackgroundColor: '#1e293b' },
+      },
+    });
+
+    const candleSeries = chart.addCandlestickSeries({
+      upColor: UP,
+      downColor: DOWN,
+      borderUpColor: UP,
+      borderDownColor: DOWN,
+      wickUpColor: UP,
+      wickDownColor: DOWN,
+    });
+    const volSeries = chart.addHistogramSeries({
+      priceFormat: { type: 'volume' },
+      priceScaleId: '',
+    });
+    chart.priceScale('').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+    const liveSeries = chart.addLineSeries({
+      color: '#38bdf8',
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      priceLineColor: '#38bdf8',
+    });
+
+    chartRef.current = chart;
+    candleSeriesRef.current = candleSeries;
+    volSeriesRef.current = volSeries;
+    liveSeriesRef.current = liveSeries;
+
+    let cancelled = false;
+    fetchStockAnalysis(symbol).then((data) => {
+      if (cancelled) return;
+      const rows = Array.isArray(data?.candles) ? data.candles : [];
+      const candles = [];
+      const volumes = [];
+      rows.forEach((r) => {
+        const time = toUtcSec(r.Date);
+        if (time == null) return;
+        const open = Number(r.Open), high = Number(r.High), low = Number(r.Low), close = Number(r.Close);
+        if (![open, high, low, close].every(Number.isFinite)) return;
+        candles.push({ time, open, high, low, close });
+        const up = close >= open;
+        volumes.push({ time, value: Number(r.Volume) || 0, color: up ? 'rgba(52,211,153,0.35)' : 'rgba(251,113,133,0.35)' });
+      });
+      if (candles.length) {
+        candleSeries.setData(candles);
+        volSeries.setData(volumes);
+        setLastCandleTime(candles[candles.length - 1].time);
+        chart.timeScale().fitContent();
       }
-    };
+    });
 
-    updateChart();
-    const interval = setInterval(updateChart, 5000);
     return () => {
-      isMounted = false;
-      clearInterval(interval);
+      cancelled = true;
+      chart.remove();
+      chartRef.current = null;
     };
   }, [symbol]);
 
+  // Feed live ticks into the overlay line + header.
+  useEffect(() => {
+    if (!tick || typeof tick.price !== 'number') return;
+    setLivePrice(tick.price);
+    const liveSeries = liveSeriesRef.current;
+    if (!liveSeries) return;
+    const time = tick.timestamp ? Math.floor(tick.timestamp) : Math.floor(Date.now() / 1000);
+    liveSeries.update({ time, value: tick.price });
+  }, [tick]);
+
   const currencySymbol = (symbol.includes('.NS') || symbol.includes('NIFTY') || symbol.includes('BANK')) ? '₹' : '$';
+  const price = livePrice ?? (tick?.price ?? 0);
 
   return (
     <div className="card" style={{ height: '500px' }}>
       <div className="card-header">
-        <div className="card-title">{symbol} Real-Time Chart ({currencySymbol}{basePrice.toLocaleString()})</div>
+        <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <span>{symbol} Real-Time Chart</span>
+          {price > 0 && <span className="font-mono text-emerald-400">{currencySymbol}{price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>}
+        </div>
+        <span className={`badge ${connected ? 'badge-success' : 'badge-warning'}`}>
+          {connected ? '● LIVE' : 'RECONNECTING'}
+        </span>
       </div>
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-          <XAxis dataKey="time" stroke="var(--text-secondary)" />
-          <YAxis yAxisId="price" domain={['auto', 'auto']} stroke="var(--text-secondary)" tickFormatter={(v) => `${currencySymbol}${v}`} />
-          <YAxis yAxisId="volume" orientation="right" stroke="var(--text-secondary)" />
-          <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px' }} />
-          <Bar yAxisId="volume" dataKey="volume" fill="rgba(56, 189, 248, 0.3)" />
-          <Line yAxisId="price" type="monotone" dataKey="price" stroke="var(--accent-green)" dot={false} strokeWidth={2} />
-          <Line yAxisId="price" type="monotone" dataKey="vwap" stroke="var(--accent-gold)" dot={false} strokeDasharray="5 5" />
-        </ComposedChart>
-      </ResponsiveContainer>
+      <div ref={containerRef} style={{ width: '100%', height: 'calc(100% - 56px)' }} />
     </div>
   );
 }

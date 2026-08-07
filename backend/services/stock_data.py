@@ -2,9 +2,72 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import time
+import threading
 import requests
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple
+
+# ── TTL cache + rate limiter ─────────────────────────────────────────────
+# Protects upstream data providers (Yahoo / NSE) from aggressive polling so
+# multiple services (MarketSummary, screener, WS stream) share one fetch.
+_QUOTE_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_HISTORY_CACHE: Dict[str, Tuple[float, pd.DataFrame]] = {}
+_CACHE_LOCK = threading.Lock()
+QUOTE_TTL_SEC = 2.0
+_HISTORY_TTL = {
+    "1d": 300.0,      # daily bars: refresh every 5 min
+    "1h": 180.0,
+    "1m": 15.0,       # intraday: refresh every 15 s
+}
+# Minimum seconds between Yahoo/NSE HTTP fetches per symbol (rate limiting).
+_LAST_FETCH: Dict[str, float] = {}
+MIN_FETCH_INTERVAL_SEC = 1.0
+_LAST_HISTORY_FETCH: Dict[str, float] = {}
+MIN_HISTORY_INTERVAL_SEC = 1.5
+
+# Cache hit/miss telemetry (exposed via /api/metrics).
+_CACHE_HITS: Dict[str, int] = {"quote": 0, "history": 0}
+_CACHE_MISSES: Dict[str, int] = {"quote": 0, "history": 0}
+
+def _cache_get(cache: Dict, key: str, ttl: float) -> Optional[Any]:
+    with _CACHE_LOCK:
+        entry = cache.get(key)
+        if entry and (time.time() - entry[0]) < ttl:
+            _CACHE_HITS["history" if cache is _HISTORY_CACHE else "quote"] += 1
+            return entry[1]
+    _CACHE_MISSES["history" if cache is _HISTORY_CACHE else "quote"] += 1
+    return None
+
+def _cache_set(cache: Dict, key: str, value: Any) -> None:
+    with _CACHE_LOCK:
+        cache[key] = (time.time(), value)
+
+def cache_stats() -> Dict[str, Any]:
+    with _CACHE_LOCK:
+        now = time.time()
+        return {
+            "quote_entries": len(_QUOTE_CACHE),
+            "history_entries": len(_HISTORY_CACHE),
+            "quote_hits": _CACHE_HITS["quote"],
+            "quote_misses": _CACHE_MISSES["quote"],
+            "history_hits": _CACHE_HITS["history"],
+            "history_misses": _CACHE_MISSES["history"],
+            "rate_limited_last_fetch_sec": round(now - max(_LAST_FETCH.values()) if _LAST_FETCH else 0.0, 2),
+        }
+
+def _cache_clear() -> None:
+    with _CACHE_LOCK:
+        _QUOTE_CACHE.clear()
+        _HISTORY_CACHE.clear()
+
+def _rate_limit(last_times: Dict[str, float], key: str, min_interval: float) -> bool:
+    """True when a fetch for `key` is allowed (not rate limited)."""
+    with _CACHE_LOCK:
+        last = last_times.get(key, 0.0)
+        if (time.time() - last) < min_interval:
+            return False
+        last_times[key] = time.time()
+        return True
 
 YFINANCE_AVAILABLE = True
 
@@ -162,9 +225,24 @@ def generate_synthetic_stock_data(symbol: str, days: int = 100, interval: str = 
     df.attrs["dataSource"] = "synthetic"
     return df
 
-def fetch_stock_data(symbol: str, period: str = "1mo", interval: str = "1d") -> pd.DataFrame:
-    """Fetch historical stock data with symbol normalization and dataSource tagging."""
+def fetch_stock_data(symbol: str, period: str = "1mo", interval: str = "1d",
+                     use_cache: bool = True) -> pd.DataFrame:
+    """Fetch historical stock data with symbol normalization and dataSource tagging.
+
+    Responses are cached in-memory with a TTL based on the interval, and per-symbol
+    rate limiting guards the upstream provider during hot loops (screener, backtest).
+    """
     norm_sym = normalize_symbol(symbol)
+    cache_key = f"{norm_sym}|{period}|{interval}"
+    ttl = _HISTORY_TTL.get(interval, 60.0)
+    if use_cache:
+        cached = _cache_get(_HISTORY_CACHE, cache_key, ttl)
+        if cached is not None and not cached.empty:
+            return cached.copy()
+    if not _rate_limit(_LAST_HISTORY_FETCH, norm_sym, MIN_HISTORY_INTERVAL_SEC):
+        cached = _cache_get(_HISTORY_CACHE, cache_key, ttl)
+        if cached is not None:
+            return cached.copy()
     try:
         ticker = yf.Ticker(norm_sym)
         df = ticker.history(period=period, interval=interval)
@@ -185,6 +263,7 @@ def fetch_stock_data(symbol: str, period: str = "1mo", interval: str = "1d") -> 
         df = df[["Date", "Open", "High", "Low", "Close", "Volume"]].copy() if "Date" in df.columns else df
         df = df.fillna(0.0)
         df.attrs["dataSource"] = "yfinance"
+        _cache_set(_HISTORY_CACHE, cache_key, df)
         return df
     except Exception as e:
         print(f"Error fetching data for {symbol} ({norm_sym}): {e}")
@@ -253,14 +332,26 @@ def _fetch_nse_direct_quote(symbol: str) -> Dict[str, Any]:
     except Exception:
         return None
 
-def fetch_live_quote(symbol: str) -> Dict[str, Any]:
-    """Fetch live quote. Source priority: NSE Direct API -> Yahoo Chart REST -> fast_info -> history -> synthetic."""
+def fetch_live_quote(symbol: str, use_cache: bool = True) -> Dict[str, Any]:
+    """Fetch live quote. Source priority: NSE Direct API -> Yahoo Chart REST -> fast_info -> history -> synthetic.
+
+    Cached in-memory for QUOTE_TTL_SEC so concurrent callers share one upstream fetch.
+    """
     clean_symbol = symbol.strip().upper()
+    if use_cache:
+        cached = _cache_get(_QUOTE_CACHE, clean_symbol, QUOTE_TTL_SEC)
+        if cached is not None:
+            return dict(cached)
+    if not _rate_limit(_LAST_FETCH, clean_symbol, MIN_FETCH_INTERVAL_SEC):
+        cached = _cache_get(_QUOTE_CACHE, clean_symbol, QUOTE_TTL_SEC)
+        if cached is not None:
+            return dict(cached)
 
     # 1. NSE India public API (real-time, best for .NS symbols)
     nse_quote = _fetch_nse_direct_quote(clean_symbol)
     if nse_quote is not None:
-        return nse_quote
+        _cache_set(_QUOTE_CACHE, clean_symbol, nse_quote)
+        return dict(nse_quote)
 
     norm_sym = normalize_symbol(clean_symbol)
     price = 0.0
@@ -309,7 +400,7 @@ def fetch_live_quote(symbol: str) -> Dict[str, Any]:
     change = round(price - prev_close, 2) if prev_close else 0.0
     change_pct = round(((price - prev_close) / prev_close) * 100, 2) if prev_close else 0.0
 
-    return {
+    quote = {
         "symbol": clean_symbol,
         "normalized_symbol": norm_sym,
         "current_price": round(price, 2),
@@ -325,3 +416,5 @@ def fetch_live_quote(symbol: str) -> Dict[str, Any]:
         "status": "LIVE_REALTIME" if price > 0 else "OFFLINE",
         "data_source": "yahoo"
     }
+    _cache_set(_QUOTE_CACHE, clean_symbol, quote)
+    return dict(quote)

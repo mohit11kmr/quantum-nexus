@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import MarketSummary from './components/MarketSummary';
 import StockChart from './components/StockChart';
 import VolumeProfile from './components/VolumeProfile';
 import VolumeScreener from './components/VolumeScreener';
 import OptionsValuation from './components/OptionsValuation';
+import OptionsIntel from './components/OptionsIntel';
 import OptionsStrategy from './components/OptionsStrategy';
 import AIInsights from './components/AIInsights';
 import BrainDashboard from './components/BrainDashboard';
@@ -15,14 +17,17 @@ import StressTester from './components/StressTester';
 import SignalVerifier from './components/SignalVerifier';
 import TradeJournal from './components/TradeJournal';
 import ProfitPlaybook from './components/ProfitPlaybook';
+import DailyReport from './components/DailyReport';
+import ConnectionBanner from './components/ConnectionBanner';
 import { useLanguage } from './i18n.jsx';
-import { Crosshair, CandlestickChart, Filter, Coins, Brain, FlaskConical, ReceiptText, ShieldCheck, Gauge } from 'lucide-react';
+import { Crosshair, CandlestickChart, Filter, Coins, Brain, FlaskConical, ReceiptText, ShieldCheck, Gauge, CalendarDays } from 'lucide-react';
 
 const NAV_SECTIONS = [
   {
     labelKey: 'section.decisions',
     tabs: [
       { id: 'playbook', labelKey: 'tab.today', icon: Crosshair },
+      { id: 'report', labelKey: 'tab.report', icon: CalendarDays },
     ],
   },
   {
@@ -52,15 +57,41 @@ const NAV_SECTIONS = [
 
 function App() {
   const { t } = useLanguage();
-  const [activeTab, setActiveTab] = useState('playbook');
-  const [symbol, setSymbol] = useState('NIFTY');
+  const { tab: tabParam, symbol: symbolParam } = useParams();
+  const navigate = useNavigate();
 
   const allTabs = NAV_SECTIONS.flatMap((s) => s.tabs);
+  const validTab = allTabs.some((tab) => tab.id === tabParam) ? tabParam : 'playbook';
+
+  const [activeTab, setActiveTab] = useState(validTab);
+  const [symbol, setSymbol] = useState((symbolParam || 'NIFTY').toUpperCase());
+
+  useEffect(() => {
+    const next = allTabs.some((tab) => tab.id === tabParam) ? tabParam : 'playbook';
+    setActiveTab(next);
+  }, [tabParam]);
+
+  useEffect(() => {
+    if (symbolParam) setSymbol(symbolParam.toUpperCase());
+  }, [symbolParam]);
+
+  const goToTab = useCallback((tabId) => {
+    setActiveTab(tabId);
+    navigate(`/${tabId}/${symbol}`);
+  }, [symbol, navigate]);
+
+  const goToSymbol = useCallback((sym) => {
+    const next = sym.toUpperCase();
+    setSymbol(next);
+    navigate(`/${activeTab}/${next}`);
+  }, [activeTab, navigate]);
 
   const renderTabContent = () => {
     switch (activeTab) {
       case 'playbook':
         return <ProfitPlaybook symbol={symbol} />;
+      case 'report':
+        return <DailyReport symbol={symbol} />;
       case 'volume':
         return (
           <div className="grid-2col">
@@ -74,7 +105,12 @@ function App() {
       case 'screener':
         return <VolumeScreener />;
       case 'options':
-        return <OptionsValuation symbol={symbol} />;
+        return (
+          <div className="grid-2col">
+            <OptionsValuation symbol={symbol} />
+            <OptionsIntel symbol={symbol} />
+          </div>
+        );
       case 'strategy':
         return <OptionsStrategy symbol={symbol} />;
       case 'ai':
@@ -97,9 +133,10 @@ function App() {
 
   return (
     <div className="app-container">
-      <Navbar symbol={symbol} setSymbol={setSymbol} />
+      <Navbar symbol={symbol} setSymbol={goToSymbol} />
 
       <main className="main-content">
+        <ConnectionBanner />
         <MarketSummary symbol={symbol} />
 
         <div className="tabs-nav" role="navigation" aria-label="Platform sections">
@@ -112,7 +149,7 @@ function App() {
                   <button
                     key={tab.id}
                     className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => goToTab(tab.id)}
                     aria-pressed={activeTab === tab.id}
                   >
                     <Icon size={15} />

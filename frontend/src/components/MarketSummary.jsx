@@ -1,46 +1,53 @@
 import React, { useState, useEffect } from 'react';
 import { fetchLiveQuote, fetchIndicators } from '../services/api';
 import { useLanguage } from '../i18n.jsx';
+import useLiveTicker from '../hooks/useLiveTicker';
 import { Activity, Gauge, ArrowUpRight, ArrowDownRight, TrendingUp } from 'lucide-react';
 
 export default function MarketSummary({ symbol = 'NIFTY' }) {
   const { t } = useLanguage();
-  const [quote, setQuote] = useState(null);
+  const [baseQuote, setBaseQuote] = useState(null);
   const [indicators, setIndicators] = useState(null);
+
+  const { tick, connected } = useLiveTicker(symbol);
 
   useEffect(() => {
     let isMounted = true;
+    const loadIndicators = async () => {
+      try {
+        const iData = await fetchIndicators(symbol);
+        if (isMounted) setIndicators(iData);
+      } catch (e) {
+        console.error("Error loading indicators for MarketSummary", e);
+      }
+    };
+
     const loadQuote = async () => {
       try {
-        const [qData, iData] = await Promise.all([
-          fetchLiveQuote(symbol),
-          fetchIndicators(symbol)
-        ]);
-        if (isMounted) {
-          setQuote(qData);
-          setIndicators(iData);
-        }
+        const qData = await fetchLiveQuote(symbol);
+        if (isMounted) setBaseQuote(qData);
       } catch (e) {
         console.error("Error loading quote for MarketSummary", e);
       }
     };
 
     loadQuote();
-    const interval = setInterval(loadQuote, 5000);
+    loadIndicators();
+    const interval = setInterval(loadIndicators, 5000);
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
   }, [symbol]);
 
-  const price = quote?.current_price || 24649.00;
-  const change = quote?.change || 24.35;
-  const changePct = quote?.change_pct || 0.10;
+  const price = tick?.price || baseQuote?.current_price || 24649.00;
+  const change = tick?.change ?? baseQuote?.change ?? 24.35;
+  const changePct = tick?.change_pct ?? baseQuote?.change_pct ?? 0.10;
   const isPositive = change >= 0;
   const currencySymbol = (symbol.includes('.NS') || symbol.includes('NIFTY') || symbol.includes('BANK')) ? '₹' : '$';
 
   const stats = [
-    { icon: Activity, label: t('market.volume'), value: quote?.volume ? (quote.volume > 1000000 ? `${(quote.volume / 1000000).toFixed(2)}M` : `${(quote.volume / 1000).toFixed(0)}K`) : '1.2M', sub: t('market.volumeSub'), tone: 'text-blue' },
+    { icon: Activity, label: t('market.volume'), value: tick?.volume ? (tick.volume > 1000000 ? `${(tick.volume / 1000000).toFixed(2)}M` : `${(tick.volume / 1000).toFixed(0)}K`) : (baseQuote?.volume ? (baseQuote.volume > 1000000 ? `${(baseQuote.volume / 1000000).toFixed(2)}M` : `${(baseQuote.volume / 1000).toFixed(0)}K`) : '1.2M'), sub: t('market.volumeSub'), tone: 'text-blue' },
     { icon: Gauge, label: t('market.rsi'), value: indicators?.rsi ? indicators.rsi.toFixed(1) : '58.2', sub: `${indicators?.regime || 'BULLISH'} trend`, tone: 'text-gold' },
     { icon: TrendingUp, label: t('market.vwap'), value: `${currencySymbol}${(price * 0.998).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: t('market.vwapSub'), tone: 'text-green' },
   ];
@@ -52,7 +59,9 @@ export default function MarketSummary({ symbol = 'NIFTY' }) {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="text-sm font-bold text-white uppercase tracking-wider">{symbol}</span>
-              <span className="text-[10px] bg-white/5 border border-white/10 text-secondary px-2 py-0.5 rounded-full font-mono">INDEX</span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${connected ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-white/5 border border-white/10 text-secondary'}`}>
+                {connected ? '● LIVE' : 'INDEX'}
+              </span>
             </div>
             <div className="flex items-center gap-3">
               <span className="text-3xl font-extrabold font-mono text-white">

@@ -1,5 +1,24 @@
 const BASE_URL = import.meta.env.VITE_API_URL || 'https://quantum-nexus-api.onrender.com';
 
+export const getWsBaseUrl = () => BASE_URL.replace(/^http/, 'ws');
+
+export const getBaseUrl = () => BASE_URL;
+
+export const checkApiHealth = async () => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 6000);
+  try {
+    const response = await fetch(`${BASE_URL}/api/health`, { signal: controller.signal });
+    clearTimeout(id);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const json = await response.json();
+    return { ok: true, version: json.version, latencyMs: null };
+  } catch (error) {
+    clearTimeout(id);
+    return { ok: false };
+  }
+};
+
 const fetchWithTimeout = async (url, options = {}) => {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), 8000);
@@ -52,6 +71,28 @@ export const fetchOptionsStrategy = async (symbol = 'NIFTY') => {
   catch { return { setup: 'Bull Call Spread', entry: 24650, target: 24850, stop: 24500, confidence: 85, quality: 'A+' }; }
 };
 
+export const fetchOptionsIntel = async (symbol = 'NIFTY') => {
+  try { return await fetchWithTimeout(`${BASE_URL}/api/options/intel?symbol=${encodeURIComponent(symbol)}`); }
+  catch {
+    return {
+      symbol: symbol,
+      spot_price: 24649.00,
+      max_pain_strike: 24600,
+      pcr_oi: 1.05,
+      pcr_volume: 0.95,
+      iv_rank_pct: 45.5,
+      atm_iv: 16.5,
+      iv_skew: 0.9,
+      call_wall: 24800,
+      put_wall: 24500,
+      directionScore: 50,
+      directionLabel: 'NEUTRAL',
+      oiMap: [],
+      dataSource: 'FALLBACK',
+    };
+  }
+};
+
 export const fetchPaperPortfolio = async () => {
   try { return await fetchWithTimeout(`${BASE_URL}/api/paper-trading/portfolio`); }
   catch { return { balance: 100000, equity: 105000, positions: [] }; }
@@ -82,9 +123,47 @@ export const fetchBrainScenarios = async () => {
   catch { return { scenarios: [{ name: 'NIFTY Bull Momentum', probability: 0.72 }, { name: 'Rangebound Consolidation', probability: 0.28 }] }; }
 };
 
-export const optimizeBrain = async () => {
-  try { return await fetchWithTimeout(`${BASE_URL}/api/brain/optimize`, { method: 'POST' }); }
-  catch { return { success: true }; }
+export const optimizeBrain = async ({ light = true, symbols = 8, epochs = 12 } = {}) => {
+  try {
+    return await fetchWithTimeout(`${BASE_URL}/api/brain/optimize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ light, symbols, epochs }),
+    });
+  }
+  catch { return { task_id: null, status: 'FAILED', error: 'Network error' }; }
+};
+
+export const fetchBrainTask = async (taskId) => {
+  try { return await fetchWithTimeout(`${BASE_URL}/api/brain/tasks/${taskId}`); }
+  catch { return { status: 'FAILED', error: 'Network error' }; }
+};
+
+export const fetchBrainTaskList = async () => {
+  try { return await fetchWithTimeout(`${BASE_URL}/api/brain/tasks`); }
+  catch { return { tasks: [] }; }
+};
+
+export const fetchMarketTicks = async (symbol = 'NIFTY') => {
+  try { return await fetchWithTimeout(`${BASE_URL}/api/market/ticks?symbol=${encodeURIComponent(symbol)}`); }
+  catch { return null; }
+};
+
+export const fetchDailyReport = async () => {
+  try { return await fetchWithTimeout(`${BASE_URL}/api/report/daily`); }
+  catch { return { report: null, next_run_ist: null }; }
+};
+
+export const generateDailyReport = async () => {
+  try {
+    const response = await fetch(`${BASE_URL}/api/report/daily/generate`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json();
+  }
+  catch { return { report: null }; }
 };
 
 export const fetchVolumeScreener = async () => {

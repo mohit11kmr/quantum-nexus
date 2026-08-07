@@ -626,6 +626,9 @@ def train_lstm_model(stocks_df_dict: Dict[str, pd.DataFrame],
     if not TORCH_AVAILABLE:
         return {"status": "LSTM_UNAVAILABLE", "message": "PyTorch not installed. Install 'torch' for the deep-learning brain."}
 
+    # Keep training single-threaded so the host (free-tier single worker) stays responsive.
+    torch.set_num_threads(1)
+
     X_all, y_all = [], []
     for symbol, df in stocks_df_dict.items():
         if df is None or df.empty or len(df) < LSTM_WINDOW + LSTM_FWD_DAYS + 2:

@@ -26,3 +26,4 @@ Thumbs.db
 .idea/
 *.log
 .github/
+backend/data/daily_report.json
