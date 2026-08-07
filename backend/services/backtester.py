@@ -30,6 +30,20 @@ def run_volume_backtest(
     df["SMA20_Close"] = df["Close"].rolling(20).mean()
     df["Vol_SMA20"] = df["Volume"].rolling(20).mean()
 
+    # Decide the entry-signal mode up front. Index tickers (NIFTY, BANKNIFTY...)
+    # rarely produce volume-surge signals, so when the volume strategy would fire
+    # fewer than 2 trades we transparently fall back to a price-breakout proxy.
+    # The chosen mode is reported in the response as `signalType`.
+    prev_vol = df["Volume"].shift(1)
+    prev_vol_sma = df["Vol_SMA20"].shift(1)
+    prev_close = df["Close"].shift(1)
+    prev_sma = df["SMA20_Close"].shift(1)
+    prev2_close = df["Close"].shift(2)
+    vol_ratio = prev_vol / prev_vol_sma.where(prev_vol_sma > 0)
+    volume_signals = int(((vol_ratio >= volume_multiplier) & (prev_close > prev_sma)).sum())
+    price_signals = int(((prev_close > prev_sma) & (prev_close > prev2_close)).sum())
+    use_price_signal = volume_signals < 2 and price_signals >= 2
+
     cost = cost_per_trade_pct / 100.0
     capital = initial_capital
     equity_curve = []
@@ -100,17 +114,24 @@ def run_volume_backtest(
         # 2. Check for entry condition using PREVIOUS bar signal, filled at THIS bar's open
         if not in_trade and i > 0:
             prev = df.iloc[i - 1]
-            prev_vol_sma = prev["Vol_SMA20"]
-            if prev_vol_sma > 0:
-                vol_ratio = prev["Volume"] / prev_vol_sma
-                if vol_ratio >= volume_multiplier and prev["Close"] > prev["SMA20_Close"]:
-                    in_trade = True
-                    entry_price = open_p
-                    entry_date = curr_date
-                    target_price = entry_price * (1 + take_profit_pct / 100)
-                    stop_price = entry_price * (1 - stop_loss_pct / 100)
-                    hold_count = 0
-                    shares = int(capital / (entry_price * (1 + cost))) if entry_price > 0 else 0
+            prev2 = df.iloc[i - 2]
+            signal = False
+            if use_price_signal:
+                # Volume surge never fires (index ticker): use close-above-SMA20 + momentum proxy
+                signal = prev["Close"] > prev["SMA20_Close"] and prev["Close"] > prev2["Close"]
+            else:
+                prev_vol_sma = prev["Vol_SMA20"]
+                if prev_vol_sma > 0:
+                    vol_ratio = prev["Volume"] / prev_vol_sma
+                    signal = vol_ratio >= volume_multiplier and prev["Close"] > prev["SMA20_Close"]
+            if signal:
+                in_trade = True
+                entry_price = open_p
+                entry_date = curr_date
+                target_price = entry_price * (1 + take_profit_pct / 100)
+                stop_price = entry_price * (1 - stop_loss_pct / 100)
+                hold_count = 0
+                shares = int(capital / (entry_price * (1 + cost))) if entry_price > 0 else 0
 
         # Record equity
         current_portfolio_value = capital
@@ -172,7 +193,8 @@ def run_volume_backtest(
         "losingTrades": losing_trades,
         "winRatePct": win_rate,
         "equityCurve": equity_curve,
-        "tradeLog": trades[-10:]
+        "tradeLog": trades[-10:],
+        "signalType": "PRICE_BREAKOUT" if use_price_signal else "VOLUME_SURGE"
     }
 
 

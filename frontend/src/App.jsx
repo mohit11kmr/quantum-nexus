@@ -15,65 +15,117 @@ import StressTester from './components/StressTester';
 import SignalVerifier from './components/SignalVerifier';
 import TradeJournal from './components/TradeJournal';
 import ProfitPlaybook from './components/ProfitPlaybook';
+import { useLanguage } from './i18n.jsx';
+import { Crosshair, CandlestickChart, Filter, Coins, Brain, FlaskConical, ReceiptText, ShieldCheck, Gauge } from 'lucide-react';
 
-const TABS = [
-  { id: 'playbook', label: '🎯 आज का ट्रेड (Trade Signal & Profit)' },
-  { id: 'volume', label: '📊 लाइव चार्ट (Live Chart & Volume)' },
-  { id: 'screener', label: '🔍 स्टॉक्स खोजें (Stock Screener)' },
-  { id: 'options', label: '🏷️ कॉल/पुट रेट (Options Chain)' },
-  { id: 'strategy', label: '🎯 AI रणनीति (Options Strategy)' },
-  { id: 'ai', label: '🧠 AI ब्रेन (Self Learning Engine)' },
-  { id: 'paper', label: '📝 प्रैक्टिस ट्रेडिंग (Paper Trading)' },
-  { id: 'backtest', label: '▶️ पुराना टेस्ट (Backtest History)' },
-  { id: 'signal', label: '✅ सिग्नल जाँच (Signal Verifier)' }
+const NAV_SECTIONS = [
+  {
+    labelKey: 'section.decisions',
+    tabs: [
+      { id: 'playbook', labelKey: 'tab.today', icon: Crosshair },
+    ],
+  },
+  {
+    labelKey: 'section.market',
+    tabs: [
+      { id: 'volume', labelKey: 'tab.chart', icon: CandlestickChart },
+      { id: 'screener', labelKey: 'tab.screener', icon: Filter },
+      { id: 'options', labelKey: 'tab.options', icon: Coins },
+      { id: 'strategy', labelKey: 'tab.strategy', icon: Brain },
+    ],
+  },
+  {
+    labelKey: 'section.aiRisk',
+    tabs: [
+      { id: 'ai', labelKey: 'tab.ai', icon: FlaskConical },
+      { id: 'backtest', labelKey: 'tab.backtest', icon: ReceiptText },
+      { id: 'signal', labelKey: 'tab.signal', icon: ShieldCheck },
+    ],
+  },
+  {
+    labelKey: 'section.trading',
+    tabs: [
+      { id: 'paper', labelKey: 'tab.paper', icon: Gauge },
+    ],
+  },
 ];
 
 function App() {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('playbook');
   const [symbol, setSymbol] = useState('NIFTY');
+
+  const allTabs = NAV_SECTIONS.flatMap((s) => s.tabs);
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'playbook':
+        return <ProfitPlaybook symbol={symbol} />;
+      case 'volume':
+        return (
+          <div className="grid-2col">
+            <StockChart symbol={symbol} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <VolumeProfile symbol={symbol} />
+              <AIInsights symbol={symbol} />
+            </div>
+          </div>
+        );
+      case 'screener':
+        return <VolumeScreener />;
+      case 'options':
+        return <OptionsValuation symbol={symbol} />;
+      case 'strategy':
+        return <OptionsStrategy symbol={symbol} />;
+      case 'ai':
+        return <BrainDashboard />;
+      case 'paper':
+        return (
+          <div className="grid-2col">
+            <PaperTrading />
+            <TradeJournal />
+          </div>
+        );
+      case 'backtest':
+        return <Backtesting symbol={symbol} />;
+      case 'signal':
+        return <SignalVerifier symbol={symbol} />;
+      default:
+        return <ProfitPlaybook symbol={symbol} />;
+    }
+  };
 
   return (
     <div className="app-container">
       <Navbar symbol={symbol} setSymbol={setSymbol} />
-      
+
       <main className="main-content">
         <MarketSummary symbol={symbol} />
-        
-        <div className="tabs-header">
-          {TABS.map(tab => (
-            <button
-              key={tab.id}
-              className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.label}
-            </button>
+
+        <div className="tabs-nav" role="navigation" aria-label="Platform sections">
+          {NAV_SECTIONS.map((section) => (
+            <div key={section.labelKey} className="tabs-nav-group">
+              <span className="tabs-nav-label">{t(section.labelKey)}</span>
+              {section.tabs.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+                    onClick={() => setActiveTab(tab.id)}
+                    aria-pressed={activeTab === tab.id}
+                  >
+                    <Icon size={15} />
+                    {t(tab.labelKey)}
+                  </button>
+                );
+              })}
+            </div>
           ))}
         </div>
 
-        <div className="tab-content">
-          {activeTab === 'playbook' && <ProfitPlaybook symbol={symbol} />}
-          {activeTab === 'volume' && (
-            <div className="grid-2col">
-              <StockChart symbol={symbol} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                <VolumeProfile symbol={symbol} />
-                <AIInsights symbol={symbol} />
-              </div>
-            </div>
-          )}
-          {activeTab === 'screener' && <VolumeScreener />}
-          {activeTab === 'options' && <OptionsValuation symbol={symbol} />}
-          {activeTab === 'strategy' && <OptionsStrategy symbol={symbol} />}
-          {activeTab === 'ai' && <BrainDashboard />}
-          {activeTab === 'paper' && (
-            <div className="grid-2col">
-              <PaperTrading />
-              <TradeJournal />
-            </div>
-          )}
-          {activeTab === 'backtest' && <Backtesting symbol={symbol} />}
-          {activeTab === 'signal' && <SignalVerifier symbol={symbol} />}
+        <div className="tab-content animate-fade-up" key={activeTab}>
+          {renderTabContent()}
         </div>
       </main>
     </div>

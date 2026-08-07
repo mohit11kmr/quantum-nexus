@@ -35,7 +35,7 @@ export const fetchLiveQuote = async (symbol = 'NIFTY') => {
 };
 
 export const fetchOptionsValuation = async (symbol = 'NIFTY') => {
-  try { return await fetchWithTimeout(`${BASE_URL}/api/options/analysis?symbol=${encodeURIComponent(symbol)}`); }
+  try { return await fetchWithTimeout(`${BASE_URL}/api/options/${encodeURIComponent(symbol)}`); }
   catch { 
     return {
       symbol: symbol,
@@ -92,8 +92,23 @@ export const fetchVolumeScreener = async () => {
   catch { return { results: [{ symbol: 'NIFTY', score: 92 }, { symbol: 'BANKNIFTY', score: 88 }, { symbol: 'RELIANCE.NS', score: 85 }] }; }
 };
 
-export const runBacktest = async (symbol = 'NIFTY') => {
-  try { return await fetchWithTimeout(`${BASE_URL}/api/backtest?symbol=${encodeURIComponent(symbol)}`, { method: 'POST' }); }
+export const runBacktest = async (symbol = 'NIFTY', params = {}) => {
+  const body = {
+    symbol,
+    volumeMultiplier: params.volumeMultiplier ?? 2.0,
+    holdingDays: params.holdingDays ?? 5,
+    stopLossPct: params.stopLossPct ?? 2.0,
+    takeProfitPct: params.takeProfitPct ?? 6.0,
+    initialCapital: params.initialCapital ?? 100000.0,
+    costPerTradePct: params.costPerTradePct ?? 0.15,
+  };
+  try {
+    return await fetchWithTimeout(`${BASE_URL}/api/backtest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
   catch { return { winRate: 68.5, profitFactor: 2.1, maxDrawdown: 9.4, equityCurve: [{date: '2024-01', val: 100000}, {date: '2024-06', val: 135000}] }; }
 };
 

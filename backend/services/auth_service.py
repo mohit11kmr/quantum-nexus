@@ -135,10 +135,24 @@ def get_user_by_username(username: str) -> Optional[Dict]:
     return auth_manager.public_user(user) if user else None
 
 
+GUEST_USER = {
+    "id": "guest",
+    "username": "guest",
+    "email": "guest@quantum-nexus.local",
+    "full_name": "Guest Visitor",
+    "role": "guest",
+    "created_at": "2026-01-01T00:00:00Z",
+}
+
+
 def get_current_user(authorization: Optional[str] = Header(None)) -> Dict:
-    """FastAPI dependency: require a valid Bearer access token."""
+    """FastAPI dependency: require a valid Bearer access token.
+
+    Visitors without a token fall back to a shared "guest" identity so the
+    public dashboard (paper trading, broker status) works without login.
+    """
     if not authorization:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authorization header missing")
+        return dict(GUEST_USER)
     try:
         scheme, token = authorization.split(" ", 1)
         if scheme.lower() != "bearer":

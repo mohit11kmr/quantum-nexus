@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { fetchPaperPortfolio, executePaperBuy, closePaperPosition, resetPaperAccount, fetchLiveQuote } from '../services/api';
+import { useLanguage } from '../i18n.jsx';
 import { ShoppingBag, XCircle, RefreshCw, TrendingUp, DollarSign, Activity } from 'lucide-react';
 
 export default function PaperTrading() {
+  const { t } = useLanguage();
   const [portfolio, setPortfolio] = useState({ equity: 100000, balance: 100000, positions: [] });
   const [closedTrades, setClosedTrades] = useState([
     { id: 1, date: '2026-08-06 10:15', symbol: 'NIFTY 24650 CE', side: 'BUY', entry: 145.20, exit: 182.50, qty: 50, pnl: 1865.00, notes: 'Golden Rule #3 VWAP Crossover' }
@@ -64,7 +66,7 @@ export default function PaperTrading() {
       const triggeredPositions = updatedPos.filter(p => p.tsl_triggered);
       triggeredPositions.forEach(p => {
          // In a real app, this would call the API. For UI demo, we'll handle it below.
-         handleClosePosition({...p, notes: 'TSL Hit - Protected Capital'});
+         handleClosePosition({...p, notes: t('pt.tslNote')});
       });
 
       return {
@@ -78,7 +80,7 @@ export default function PaperTrading() {
   const handleExecuteBuy = async (e) => {
     e.preventDefault();
     if (totalInvestment > portfolio.balance) {
-      setMsg('❌ अपर्याप्त बैलेंस (Insufficient Balance)!');
+      setMsg('❌ ' + t('pt.insufficient'));
       return;
     }
 
@@ -107,9 +109,9 @@ export default function PaperTrading() {
         positions: [...(prev.positions || []), newPos]
       }));
 
-      setMsg('✅ ट्रेड सफलतापूर्वक निष्पादित (Buy Order Executed)!');
+      setMsg('✅ ' + t('pt.executed'));
     } catch (err) {
-      setMsg('❌ ट्रेड एरर: ' + err.message);
+      setMsg('❌ ' + t('pt.errorPrefix') + err.message);
     } finally {
       setLoading(false);
     }
@@ -127,7 +129,7 @@ export default function PaperTrading() {
         exit: pos.current_price,
         qty: pos.quantity,
         pnl: pos.pnl,
-        notes: pos.notes || 'Target Met / Closed via Terminal'
+        notes: pos.notes || t('pt.notesDefault')
       };
 
       setClosedTrades(prev => [closedRecord, ...prev]);
@@ -141,7 +143,7 @@ export default function PaperTrading() {
           positions: remaining
         };
       });
-      setMsg(`🎉 ${pos.symbol} पोजीशन बंद की गई! P&L: ₹${pos.pnl}`);
+      setMsg(`🎉 ${t('pt.closed', { symbol: pos.symbol, pnl: pos.pnl })}`);
     } catch (err) {
       console.error("Close position error", err);
     }
@@ -152,7 +154,7 @@ export default function PaperTrading() {
       await resetPaperAccount();
       setPortfolio({ equity: 100000, balance: 100000, positions: [] });
       setClosedTrades([]);
-      setMsg('🔄 खाता ₹1,00,000 पर रीसेट कर दिया गया!');
+      setMsg('🔄 ' + t('pt.resetMsg'));
     } catch (e) {
       console.error("Reset error", e);
     }
@@ -169,35 +171,35 @@ export default function PaperTrading() {
           <div>
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <Activity className="text-cyan-400 w-5 h-5" /> 
-              वर्चुअल ट्रेडिंग लाइव टर्मिनल (Live Practice Trading Terminal)
+              {t('pt.title')}
             </h2>
             <p className="text-secondary text-xs">
-              वास्तविक बाज़ार दरों पर बिना जोखिम के ऑप्शन खरीद/बिक्री करके प्रैक्टिस करें।
+              {t('pt.subtitle')}
             </p>
           </div>
           <button 
             onClick={handleResetAccount}
             className="btn flex items-center gap-1.5 text-xs text-rose-400 border-rose-500/30 hover:bg-rose-950/40"
           >
-            <RefreshCw className="w-3.5 h-3.5" /> खाता रीसेट (Reset ₹1L)
+            <RefreshCw className="w-3.5 h-3.5" /> {t('pt.reset')}
           </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="p-4 rounded-xl bg-gray-950/80 border border-gray-800">
-            <div className="text-xs text-secondary font-semibold mb-1">कुल संपत्ति (Total Equity)</div>
+            <div className="text-xs text-secondary font-semibold mb-1">{t('pt.equity')}</div>
             <div className="text-2xl font-mono font-bold text-white">
               ₹{portfolio.equity?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </div>
           </div>
           <div className="p-4 rounded-xl bg-gray-950/80 border border-gray-800">
-            <div className="text-xs text-secondary font-semibold mb-1">उपलब्ध कैश (Available Balance)</div>
+            <div className="text-xs text-secondary font-semibold mb-1">{t('pt.cash')}</div>
             <div className="text-2xl font-mono font-bold text-cyan-400">
               ₹{portfolio.balance?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </div>
           </div>
           <div className="p-4 rounded-xl bg-gray-950/80 border border-gray-800">
-            <div className="text-xs text-secondary font-semibold mb-1">ओपन P&L (Floating P&L)</div>
+            <div className="text-xs text-secondary font-semibold mb-1">{t('pt.pnl')}</div>
             <div className={`text-2xl font-mono font-bold ${totalOpenPnL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
               {totalOpenPnL >= 0 ? '+' : ''}₹{totalOpenPnL.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </div>
@@ -209,12 +211,12 @@ export default function PaperTrading() {
       <div className="card p-5 border border-emerald-500/30">
         <h3 className="card-title text-base text-emerald-400 mb-4 flex items-center gap-2">
           <ShoppingBag className="w-5 h-5" /> 
-          नया ऑर्डर डालें (Place Real-Time Paper Order)
+          {t('pt.order')}
         </h3>
 
         <form onSubmit={handleExecuteBuy} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
           <div>
-            <label className="text-xs text-secondary block mb-1">कंट्रैक्ट / स्ट्राइक (Contract):</label>
+            <label className="text-xs text-secondary block mb-1">{t('pt.contract')}</label>
             <input 
               type="text" 
               value={symbol} 
@@ -226,7 +228,7 @@ export default function PaperTrading() {
           </div>
 
           <div>
-            <label className="text-xs text-secondary block mb-1">प्रीमियम दर (Price ₹):</label>
+            <label className="text-xs text-secondary block mb-1">{t('pt.price')}</label>
             <input 
               type="number" 
               step="0.05"
@@ -238,7 +240,7 @@ export default function PaperTrading() {
           </div>
 
           <div>
-            <label className="text-xs text-secondary block mb-1">लॉट की संख्या (Lots):</label>
+            <label className="text-xs text-secondary block mb-1">{t('pt.lots')}</label>
             <input 
               type="number" 
               min="1"
@@ -251,7 +253,7 @@ export default function PaperTrading() {
           </div>
 
           <div>
-            <label className="text-xs text-secondary block mb-1">कुल लागत (Investment):</label>
+            <label className="text-xs text-secondary block mb-1">{t('pt.investment')}</label>
             <div className="text-sm font-mono font-bold text-cyan-400 py-2">
               ₹{totalInvestment.toLocaleString()} ({totalQty} Qty)
             </div>
@@ -264,7 +266,7 @@ export default function PaperTrading() {
               className="btn btn-primary w-full py-2 flex items-center justify-center gap-2 font-bold text-xs"
             >
               <TrendingUp className="w-4 h-4" /> 
-              {loading ? 'ऑर्डर जा रहा है...' : 'अभी खरीदें (BUY ORDER)'}
+              {loading ? t('pt.ordering') : t('pt.buy')}
             </button>
           </div>
         </form>
@@ -275,9 +277,9 @@ export default function PaperTrading() {
       {/* Active Open Positions Table */}
       <div className="card p-5">
         <h3 className="card-title text-base text-white mb-4 flex items-center justify-between">
-          <span>📈 सक्रिय पोजीशन (Active Open Positions)</span>
+          <span>📈 {t('pt.openPos')}</span>
           <span className="text-xs font-mono text-secondary">
-            {(portfolio.positions || []).length} Open
+            {(portfolio.positions || []).length} {t('pt.open')}
           </span>
         </h3>
 
@@ -285,20 +287,20 @@ export default function PaperTrading() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>समय (Time)</th>
-                <th>कंट्रैक्ट (Contract)</th>
-                <th>मात्रा (Qty / Lots)</th>
-                <th>बाय रेट (Entry)</th>
-                <th>लाइव रेट (LTP)</th>
-                <th>लाइव मुनाफा/घाटा (P&L ₹)</th>
-                <th>एक्शन (Action)</th>
+                <th>{t('pt.colTime')}</th>
+                <th>{t('pt.colContract')}</th>
+                <th>{t('pt.colQty')}</th>
+                <th>{t('pt.colEntry')}</th>
+                <th>{t('pt.colLtp')}</th>
+                <th>{t('pt.colPnL')}</th>
+                <th>{t('pt.colAction')}</th>
               </tr>
             </thead>
             <tbody>
               {(!portfolio.positions || portfolio.positions.length === 0) ? (
                 <tr>
                   <td colSpan="7" className="text-center py-6 text-secondary italic">
-                    कोई ओपन पोजीशन नहीं है। ऊपर दिए गए फ़ॉर्म से "अभी खरीदें" बटन दबाकर लाइव ट्रेड प्रैक्टिस करें!
+                    {t('pt.emptyTable')}
                   </td>
                 </tr>
               ) : (
@@ -320,7 +322,7 @@ export default function PaperTrading() {
                           onClick={() => handleClosePosition(pos)}
                           className="btn text-xs px-2.5 py-1 text-rose-400 border-rose-500/40 hover:bg-rose-950/60"
                         >
-                          पोजीशन बंद करें (Close)
+                          {t('pt.close')}
                         </button>
                       </td>
                     </tr>
@@ -335,19 +337,19 @@ export default function PaperTrading() {
       {/* Closed Trade History Log */}
       <div className="card p-5">
         <h3 className="card-title text-base text-white mb-4">
-          📜 पूरा किया गया ट्रेड इतिहास (Trade Journal & History)
+          📜 {t('pt.history')}
         </h3>
         <div className="table-container">
           <table className="data-table">
             <thead>
               <tr>
-                <th>तारीख</th>
-                <th>कंट्रैक्ट</th>
-                <th>साइड</th>
-                <th>एंट्री</th>
-                <th>एग्जिट</th>
-                <th>नेट P&L</th>
-                <th>नोट्स</th>
+                <th>{t('pt.histDate')}</th>
+                <th>{t('pt.colContract')}</th>
+                <th>{t('pt.histSide')}</th>
+                <th>{t('pt.colEntry')}</th>
+                <th>{t('pt.histExit')}</th>
+                <th>{t('pt.histNetPnl')}</th>
+                <th>{t('pt.histNotes')}</th>
               </tr>
             </thead>
             <tbody>
